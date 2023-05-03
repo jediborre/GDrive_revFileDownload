@@ -1,2 +1,2 @@
 # GDrive_revFileDownload
-Google Drive Api Multiples download Files previous revisions attacked by ransomware.
+Download Multiples Files from previous healthy revision with Google Drive API being attacked by ransomware.
