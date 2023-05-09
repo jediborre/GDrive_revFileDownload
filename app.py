@@ -60,23 +60,46 @@ def googleDrive(file_name):
         with open('token.json', 'w') as token:
             token.write(creds.to_json())
     try:
-        query = f'name={file_name}'
         drive_service = build('drive', 'v3', credentials=creds)
-        files = drive_service.files().list(
-            q=query, fields='files(id)'
-        ).execute()
-        print(files['files'])
+
+        MARKETING_ROOTID = '1xxeM5EI7m6KkS9GICO6zy-fAml0XhWr3'
+        # root_folder = drive_service.files().get(fileId=MARKETING_ROOTID).execute()
+
+        # folders = drive_service.files().list(q="'{}' in parents and name contains '.foty'".format(root_folder['id']), fields="nextPageToken, files(id, name, mimeType, createdTime)").execute()
+
+        # if not folders:
+        #     print("No folders found in your Drive.")
+        # else:
+        #     print("Your Drive folders:")
+        #     for folder in folders['files']:
+        #         print(folder)
+        query = "trashed = false and mimeType != 'application/vnd.google-apps.folder' and fileExtension = 'foty'"
+
+        # Use the files().list() method with the query parameter to retrieve all matching files
+        results = drive_service.files().list(q=query,fields="nextPageToken, files(id, name, createdTime, size)").execute()
+
+        files = results.get("files", [])
+
+        # If there are more than 100 files, paginate through the results
+        while results.get('nextPageToken'):
+            results = drive_service.files().list(q=query,fields="nextPageToken, files(id, name, createdTime, size)",pageToken=results['nextPageToken']).execute()
+            files.extend(results.get("files", []))
+        
+        for item in files:
+            print(f'{item["name"]} ({item["id"]})')
+
     except HttpError as error:
         print(f'An error occurred: {error}')
 
 
 def main():
-    if not os.path.exists('files.tsv'):
-        affected_files = write_affected_files()
-    else:
-        affected_files = read_affected_files()
-    _file = affected_files[0][0]
-    print(f'Hay {len(affected_files)} archivos afectados.')
+    # if not os.path.exists('files.tsv'):
+    #     affected_files = write_affected_files()
+    # else:
+    #     affected_files = read_affected_files()
+    # _file = affected_files[0][0]
+    # print(f'Hay {len(affected_files)} archivos afectados.')
+    _file = ''
     googleDrive(_file)
 
 
