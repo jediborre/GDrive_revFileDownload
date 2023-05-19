@@ -44,6 +44,18 @@ def write_affected_files():
     return sorted_files
 
 
+def get_path(service, file_id):
+    file = service.files().get(fileId=file_id, fields='id, name, parents').execute()
+    file_name = file['name']
+    parents = file.get('parents', [])
+    if not parents:
+        return "/" + file_name
+    parent_path = ""
+    for parent in parents:
+        parent_path += get_path(service, parent) + "/"
+    return parent_path + file_name
+
+
 def googleDrive(file_name):
     creds = None
     credentials_file = 'token.json'
@@ -62,7 +74,9 @@ def googleDrive(file_name):
     try:
         drive_service = build('drive', 'v3', credentials=creds)
 
-        MARKETING_ROOTID = '1xxeM5EI7m6KkS9GICO6zy-fAml0XhWr3'
+
+        #Intento 1
+        # MARKETING_ROOTID = '1xxeM5EI7m6KkS9GICO6zy-fAml0XhWr3'
         # root_folder = drive_service.files().get(fileId=MARKETING_ROOTID).execute()
 
         # folders = drive_service.files().list(q="'{}' in parents and name contains '.foty'".format(root_folder['id']), fields="nextPageToken, files(id, name, mimeType, createdTime)").execute()
@@ -73,20 +87,30 @@ def googleDrive(file_name):
         #     print("Your Drive folders:")
         #     for folder in folders['files']:
         #         print(folder)
-        query = "trashed = false and mimeType != 'application/vnd.google-apps.folder' and fileExtension = 'foty'"
 
-        # Use the files().list() method with the query parameter to retrieve all matching files
-        results = drive_service.files().list(q=query,fields="nextPageToken, files(id, name, createdTime, size)").execute()
+        #Intento 2
+        query = """
+                trashed = false and mimeType != 'application/vnd.google-apps.folder'
+                and fileExtension = 'foty'"""
+        results = drive_service.files().list(
+            q=query,
+            fields="nextPageToken, files(id, name, createdTime, parents, size)"
+        ).execute()
 
         files = results.get("files", [])
 
-        # If there are more than 100 files, paginate through the results
-        while results.get('nextPageToken'):
-            results = drive_service.files().list(q=query,fields="nextPageToken, files(id, name, createdTime, size)",pageToken=results['nextPageToken']).execute()
-            files.extend(results.get("files", []))
+        # while results.get('nextPageToken'):
+        #     results = drive_service.files().list(q=query,fields="nextPageToken, files(id, name, createdTime, parents, size)",pageToken=results['nextPageToken']).execute()
+        #     files.extend(results.get("files", []))
         
-        for item in files:
-            print(f'{item["name"]} ({item["id"]})')
+        # for item in files:
+        #     print(f'{get_path(drive_service, item["id"])}  {item["name"]} ')
+
+        # files = drive_service.files().list().execute()
+        # for file in files['files']:
+        #     print(file)
+            # if ".foty" in file.get("name"):
+            #     print(file.get("name"), file.get("path"))
 
     except HttpError as error:
         print(f'An error occurred: {error}')
