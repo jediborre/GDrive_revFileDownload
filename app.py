@@ -45,7 +45,10 @@ def write_affected_files():
 
 
 def get_path(service, file_id):
-    file = service.files().get(fileId=file_id, fields='id, name, parents').execute()
+    file = service.files().get(
+        fileId=file_id,
+        fields='id, name, parents'
+    ).execute()
     file_name = file['name']
     parents = file.get('parents', [])
     if not parents:
@@ -54,6 +57,11 @@ def get_path(service, file_id):
     for parent in parents:
         parent_path += get_path(service, parent) + "/"
     return parent_path + file_name
+
+
+def get_file_name_from_revision(drive_service, file_id, revision_id):
+    revision = drive_service.revisions().get(fileId=file_id, revisionId=revision_id, fields='id, originalFilename').execute()
+    return revision.get('originalFilename')
 
 
 def googleDrive(file_name):
@@ -74,12 +82,19 @@ def googleDrive(file_name):
     try:
         drive_service = build('drive', 'v3', credentials=creds)
 
-
-        #Intento 1
+        # Intento 1
         # MARKETING_ROOTID = '1xxeM5EI7m6KkS9GICO6zy-fAml0XhWr3'
-        # root_folder = drive_service.files().get(fileId=MARKETING_ROOTID).execute()
+        # root_folder = drive_service.files().get(
+        #   fileId=MARKETING_ROOTID
+        # ).execute()
 
-        # folders = drive_service.files().list(q="'{}' in parents and name contains '.foty'".format(root_folder['id']), fields="nextPageToken, files(id, name, mimeType, createdTime)").execute()
+        # folders = drive_service.files().list(
+        #   q="'{}' in parents and name contains '.foty'".format(
+        #       root_folder['id']
+        #   ),
+        #   fields="nextPageToken,
+        #   files(id, name, mimeType, createdTime)"
+        # ).execute()
 
         # if not folders:
         #     print("No folders found in your Drive.")
@@ -88,29 +103,45 @@ def googleDrive(file_name):
         #     for folder in folders['files']:
         #         print(folder)
 
-        #Intento 2
-        query = """
-                trashed = false and mimeType != 'application/vnd.google-apps.folder'
-                and fileExtension = 'foty'"""
+        # Intento 2
+        query = (
+            "trashed = false "
+            "and mimeType != 'application/vnd.google-apps.folder' "
+            "and fileExtension = 'foty'"
+        )
         results = drive_service.files().list(
             q=query,
-            fields="nextPageToken, files(id, name, createdTime, parents, size)"
+            fields=(
+                "nextPageToken, "
+                "files(id, name, createdTime, parents, mimeType, size)"
+            )
         ).execute()
 
         files = results.get("files", [])
 
         # while results.get('nextPageToken'):
-        #     results = drive_service.files().list(q=query,fields="nextPageToken, files(id, name, createdTime, parents, size)",pageToken=results['nextPageToken']).execute()
+        #     results = drive_service.files().list(
+        #   q=query,
+        #   fields="nextPageToken,
+        #   files(id, name, createdTime, parents, size)",
+        #   pageToken=results['nextPageToken']
+        # ).execute()
         #     files.extend(results.get("files", []))
-        
-        # for item in files:
-        #     print(f'{get_path(drive_service, item["id"])}  {item["name"]} ')
 
-        # files = drive_service.files().list().execute()
-        # for file in files['files']:
-        #     print(file)
-            # if ".foty" in file.get("name"):
-            #     print(file.get("name"), file.get("path"))
+        for n, file in enumerate(files):
+            revisions = drive_service.revisions().list(
+                fileId=file['id']
+            ).execute()
+            print((
+                f"{n}: "
+                # f"{get_path(drive_service, file['id'])}\t"
+                f"{file['name']}\t"
+                f"{file['mimeType']}"
+            ))
+            for m, revision in enumerate(revisions['revisions']):
+                print(f"    {m + 1} {get_file_name_from_revision(drive_service, file['id'], revision['id'])} {revision['modifiedTime']}")
+            if n == 5:
+                break
 
     except HttpError as error:
         print(f'An error occurred: {error}')
