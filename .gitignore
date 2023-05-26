@@ -162,3 +162,5 @@ cython_debug/
 credentials.json
 /files.tsv
 /downloaded
+/p_files_from_googleDrove.json
+/files_from_googleDrove.json
