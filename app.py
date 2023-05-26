@@ -1,9 +1,12 @@
 import os
+import io
 import json
+from tqdm import tqdm
 from datetime import datetime
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 limiter = True
@@ -161,29 +164,102 @@ def getFileRevisionsAndPath(drive_service, db_filename):
         writer.write(json.dumps(data))
 
 
-def download_file(drive_service, file):
+def delete_file(file_path):
+    try:
+        os.remove(file_path)
+    except FileNotFoundError:
+        print(f"File '{file_path}' not found.")
+    except PermissionError:
+        print(f"Permission denied to delete file '{file_path}'.")
+
+
+def create_folder(folder_path):
+    if not os.path.exists(folder_path):
+        os.makedirs(folder_path)
+        print(f"Folder '{folder_path}' created")
+
+
+def download_file(drive_service, file, download):
+    done = False
     filename = file['filename']
     original_filename = file['original_filename']
-    print(f'{filename} -> {original_filename}')
+    file_id = file['id']
+    revision_id = file['revision_id']
+    if download:
+        create_folder('downloaded')
+        request = drive_service.revisions().get_media(
+            fileId=file_id,
+            revisionId=revision_id
+        )
+
+        file_handle = io.FileIO(f'downloaded/{original_filename}', 'wb')
+        downloader = MediaIoBaseDownload(file_handle, request)
+
+        while not done:
+            try:
+                status, done = downloader.next_chunk()
+                if status:
+                    print((
+                        f"{original_filename} -> "
+                        f"{int(status.progress() * 100)}%"
+                    ))
+            except HttpError as e:
+                print(f"\n{original_filename} -> X HTTP")
+                print(e)
+                break
+            except Exception as e:
+                print(f"\n{original_filename} -> X")
+                print(e)
+                break
+            finally:
+                if not done:
+                    file_handle.close()
+                    delete_file(f'downloaded/{original_filename}')
+
+        if done:
+            print(f'{filename} -> {original_filename}')
+    else:
+        print(f' Simulated Download {filename} -> {original_filename}')
+
+    return False
+
+
+def save_DB(db_filename, db):
+    with open(db_filename, 'w') as writer:
+        writer.write(json.dumps(db))
 
 
 def googleDrive(drive_service, db_filename):
     global limiter
     dic_files = json.loads(open(db_filename, 'r').read())
+    total_files = 5 if limiter else len(dic_files)
+    progress_bar = tqdm(total=total_files)
     for n, file_id in enumerate(dic_files):
+        changes = False
         file = dic_files[file_id]
-        filename = file['filename']
+        original_filename = file['original_filename']
         if file['path'] == '':
+            changes = True
             file['path'] = get_path(drive_service, file_id)
         if 'download' not in file:
+            changes = True
             file['download'] = False
 
         if not file['download']:
-            download_file(drive_service, file)
+            downloaded = download_file(drive_service, file, True)
+            if downloaded:
+                changes = True
+                file['download'] = True
         else:
-            print(filename)
+            print(f'{original_filename} -> Already Downloaded')
+
+        dic_files[file_id] = file
+        if changes:
+            save_DB(db_filename, dic_files)
+
+        progress_bar.update(1)
         if limiter:
-            if n > 5:
+            if n > total_files:
                 break
 
 
@@ -259,7 +335,7 @@ def oldgoogleDrive():
 def connectGoogleDrive():
     creds = None
     credentials_file = 'token.json'
-    SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly']
+    SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly', 'https://www.googleapis.com/auth/drive']
     if os.path.exists(credentials_file):
         creds = Credentials.from_authorized_user_file(credentials_file)
     if not creds or not creds.valid:
@@ -278,12 +354,6 @@ def connectGoogleDrive():
 
 
 def main():
-    # if not os.path.exists('files.tsv'):
-    #     affected_files = write_affected_files()
-    # else:
-    #     affected_files = read_affected_files()
-    # _file = affected_files[0][0]
-    # print(f'Hay {len(affected_files)} archivos afectados.')
     db_file = 'files_from_googleDrove.json'
     db_file_dic = f'p_{db_file}'
     drive_service = connectGoogleDrive()
