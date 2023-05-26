@@ -10,6 +10,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 limiter = True
+DOWNLOADED_PATH = 'D:/gdrive_restored/'
 
 
 def get_foty_files(root_dir):
@@ -173,26 +174,29 @@ def delete_file(file_path):
         print(f"Permission denied to delete file '{file_path}'.")
 
 
-def create_folder(folder_path):
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-        print(f"Folder '{folder_path}' created")
+def create_folder(directory_path):
+    if not os.path.exists(directory_path):
+        os.makedirs(directory_path, exist_ok=True)
+        print(f"Folder '{directory_path}' created")
 
 
 def download_file(drive_service, file, download):
+    global DOWNLOADED_PATH
     done = False
     filename = file['filename']
     original_filename = file['original_filename']
+    path = file['path']
     file_id = file['id']
     revision_id = file['revision_id']
+    file_path = os.path.dirname(DOWNLOADED_PATH + path[11:])
+    create_folder(file_path)
     if download:
-        create_folder('downloaded')
         request = drive_service.revisions().get_media(
             fileId=file_id,
             revisionId=revision_id
         )
 
-        file_handle = io.FileIO(f'downloaded/{original_filename}', 'wb')
+        file_handle = io.FileIO(f'{file_path}/{original_filename}', 'wb')
         downloader = MediaIoBaseDownload(file_handle, request)
 
         while not done:
@@ -205,11 +209,13 @@ def download_file(drive_service, file, download):
                     ))
             except HttpError as e:
                 print(f"\n{original_filename} -> X HTTP")
-                print(e)
+                print(e._get_reason())
+                # print(type(e))
                 break
             except Exception as e:
                 print(f"\n{original_filename} -> X")
-                print(e)
+                print(type(e))
+                # print(e)
                 break
             finally:
                 if not done:
@@ -217,11 +223,11 @@ def download_file(drive_service, file, download):
                     delete_file(f'downloaded/{original_filename}')
 
         if done:
-            print(f'{filename} -> {original_filename}')
+            # print(f'{filename} -> {original_filename}')
     else:
         print(f' Simulated Download {filename} -> {original_filename}')
 
-    return False
+    return done
 
 
 def save_DB(db_filename, db):
@@ -335,7 +341,10 @@ def oldgoogleDrive():
 def connectGoogleDrive():
     creds = None
     credentials_file = 'token.json'
-    SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly', 'https://www.googleapis.com/auth/drive']
+    SCOPES = [
+        'https://www.googleapis.com/auth/drive.readonly',
+        'https://www.googleapis.com/auth/drive.metadata.readonly',
+    ]
     if os.path.exists(credentials_file):
         creds = Credentials.from_authorized_user_file(credentials_file)
     if not creds or not creds.valid:
