@@ -223,6 +223,7 @@ def download_file(drive_service, file, download):
                     delete_file(f'downloaded/{original_filename}')
 
         if done:
+            pass
             # print(f'{filename} -> {original_filename}')
     else:
         print(f' Simulated Download {filename} -> {original_filename}')
