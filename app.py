@@ -9,7 +9,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-limiter = True
+limiter = False
 DOWNLOADED_PATH = 'D:/gdrive_restored/'
 
 
@@ -177,7 +177,7 @@ def delete_file(file_path):
 def create_folder(directory_path):
     if not os.path.exists(directory_path):
         os.makedirs(directory_path, exist_ok=True)
-        print(f"Folder '{directory_path}' created")
+        print(f"\nFolder '{directory_path}' created")
 
 
 def download_file(drive_service, file, download):
@@ -203,10 +203,11 @@ def download_file(drive_service, file, download):
             try:
                 status, done = downloader.next_chunk()
                 if status:
-                    print((
-                        f"{original_filename} -> "
-                        f"{int(status.progress() * 100)}%"
-                    ))
+                    # print((
+                    #     f"\n{original_filename} -> "
+                    #     f"{int(status.progress() * 100)}%"
+                    # ))
+                    pass
             except HttpError as e:
                 print(f"\n{original_filename} -> X HTTP")
                 print(e._get_reason())
@@ -241,33 +242,37 @@ def googleDrive(drive_service, db_filename):
     dic_files = json.loads(open(db_filename, 'r').read())
     total_files = 5 if limiter else len(dic_files)
     progress_bar = tqdm(total=total_files)
-    for n, file_id in enumerate(dic_files):
-        changes = False
-        file = dic_files[file_id]
-        original_filename = file['original_filename']
-        if file['path'] == '':
-            changes = True
-            file['path'] = get_path(drive_service, file_id)
-        if 'download' not in file:
-            changes = True
-            file['download'] = False
-
-        if not file['download']:
-            downloaded = download_file(drive_service, file, True)
-            if downloaded:
+    try:
+        for n, file_id in enumerate(dic_files):
+            changes = False
+            file = dic_files[file_id]
+            # original_filename = file['original_filename']
+            if file['path'] == '':
                 changes = True
-                file['download'] = True
-        else:
-            print(f'{original_filename} -> Already Downloaded')
+                file['path'] = get_path(drive_service, file_id)
+            if 'download' not in file:
+                changes = True
+                file['download'] = False
 
-        dic_files[file_id] = file
-        if changes:
-            save_DB(db_filename, dic_files)
+            if not file['download']:
+                downloaded = download_file(drive_service, file, True)
+                if downloaded:
+                    changes = True
+                    file['download'] = True
+            else:
+                pass
+                # print(f'{original_filename} -> Already Downloaded')
 
-        progress_bar.update(1)
-        if limiter:
-            if n > total_files:
-                break
+            dic_files[file_id] = file
+            if changes:
+                save_DB(db_filename, dic_files)
+
+            progress_bar.update(1)
+            if limiter:
+                if n > total_files:
+                    break
+    except KeyboardInterrupt:
+        save_DB(db_filename, dic_files)
 
 
 def oldgoogleDrive():
