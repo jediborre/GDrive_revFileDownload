@@ -199,14 +199,16 @@ def download_file(drive_service, file, download):
         file_handle = io.FileIO(f'{file_path}/{original_filename}', 'wb')
         downloader = MediaIoBaseDownload(file_handle, request)
 
+        # print(f'{original_filename}')
+
         while not done:
             try:
                 status, done = downloader.next_chunk()
                 if status:
-                    # print((
-                    #     f"\n{original_filename} -> "
-                    #     f"{int(status.progress() * 100)}%"
-                    # ))
+                    print((
+                        f"{original_filename} -> "
+                        f"{int(status.progress() * 100)}%"
+                    ))
                     pass
             except HttpError as e:
                 print(f"\n{original_filename} -> X HTTP")
@@ -216,16 +218,14 @@ def download_file(drive_service, file, download):
             except Exception as e:
                 print(f"\n{original_filename} -> X")
                 print(type(e))
-                # print(e)
+                print(e)
                 break
-            finally:
-                if not done:
-                    file_handle.close()
-                    delete_file(f'downloaded/{original_filename}')
 
         if done:
-            pass
-            # print(f'{filename} -> {original_filename}')
+            print(f'{original_filename} -> OK')
+        else:
+            file_handle.close()
+            delete_file(f'{file_path}/{original_filename}')
     else:
         print(f' Simulated Download {filename} -> {original_filename}')
 
@@ -260,14 +260,14 @@ def googleDrive(drive_service, db_filename):
                     changes = True
                     file['download'] = True
             else:
-                pass
                 # print(f'{original_filename} -> Already Downloaded')
+                pass
 
             dic_files[file_id] = file
+            progress_bar.update(1)
             if changes:
                 save_DB(db_filename, dic_files)
 
-            progress_bar.update(1)
             if limiter:
                 if n > total_files:
                     break
