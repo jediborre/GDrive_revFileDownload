@@ -10,21 +10,14 @@ from googleapiclient.http import MediaIoBaseDownload
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 limiter = False
+connectGDrive = False
+RENAME_FILES = True
 DOWNLOADED_PATH = 'D:/gdrive_restored/'
+SERVER_FOLDER = '//PROPROM/Marketing/'
 
 
-def get_foty_files(root_dir):
-    foty_files = []
-    for dirpath, dirnames, filenames in os.walk(root_dir):
-        for filename in filenames:
-            if os.path.splitext(filename)[1] == '.foty':
-                archivo = os.path.join(dirpath, filename)
-                foty_files.append((archivo[19:], os.path.getsize(archivo)))
-    return foty_files
-
-
-def read_affected_files():
-    file_path = 'files.tsv'
+def read_affected_files(server_afected_files):
+    file_path = server_afected_files
     foty_files = []
     if os.path.exists(file_path):
         with open(file_path, 'r', encoding='utf-8') as file:
@@ -37,21 +30,69 @@ def read_affected_files():
     return foty_files
 
 
-def write_affected_files():
-    FOLDER = '//PROPROM/Marketing/'
-    print('Encontrando archivos afectados en el server.')
-    foty_files = get_foty_files(FOLDER)
-    print('Ordenando por tamano.')
-    sorted_files = sorted(foty_files, key=lambda x: x[1], reverse=True)
-    with open('files.tsv', 'w', encoding='utf-8') as file:
-        print(f'Escribiendo {len(sorted_files)} archivos.')
-        for filepath, size in sorted_files:
-            file.write(f"{filepath}|{size}\n")
-        print('Terminado.')
-    return sorted_files
+def rename_affected_files(root_folder, affeted_files_file):
+    if os.path.exists(affeted_files_file):
+        with open(affeted_files_file, 'r', encoding='utf-8') as file:
+            content = file.read()
+            os.chdir(root_folder)
+            lines = content.split("\n")
+            progress_bar = tqdm(total=len(lines))
+            for line in lines:
+                if '|' in line:
+                    affeted_file, original_file, size = line.split("|")
+                    if os.path.exists(affeted_file):
+                        try:
+                            os.rename(affeted_file, original_file)
+                            pass
+                            print(f'{affeted_file} -> {original_file}')
+                        except Exception as e:
+                            print(str(e))
+                    else:
+                        print(f'File "{affeted_file}" not exist.')
+                progress_bar.update(1)
+            progress_bar.close()
+    else:
+        print(f'File "{affeted_files_file}" dont exist')
 
 
-def get_path(service, file_id):
+def get_affected_files(dir, extension):
+    foty_files = []
+    for dirpath, dirnames, filenames in os.walk(dir):
+        for filename in filenames:
+            if os.path.splitext(filename)[1] == extension:
+                archivo = os.path.join(dirpath, filename)
+                filewPath = archivo[19:]
+                original_filewPath = filewPath[:-len(extension)]
+                foty_files.append((
+                    archivo[19:],
+                    original_filewPath,
+                    os.path.getsize(archivo)
+                ))
+    return foty_files
+
+
+def write_affected_files(root_folder, server_afected_files, extension):
+    print(f'Buscando archivos afectados "{extension}" en el server.')
+    affected_files = get_affected_files(root_folder, extension)
+    if len(affected_files) > 0:
+        print('Ordenando por tamano.')
+        sorted_files = sorted(affected_files, key=lambda x: x[1], reverse=True)
+        with open(server_afected_files, 'w', encoding='utf-8') as file:
+            print((
+                f'Escribiendo {len(sorted_files)} '
+                f'archivos afectados "{extension}".')
+            )
+            for affected_file, original_file, size in sorted_files:
+                file.write(f"{affected_file}|{original_file}|{size}\n")
+                print(original_file)
+            print('Terminado.')
+        return sorted_files
+    else:
+        print(f'No se encontraron archivos afectados "{extension}".')
+        return []
+
+
+def get_GDrivePath(service, file_id):
     file = service.files().get(
         fileId=file_id,
         fields='id, name, parents'
@@ -62,7 +103,7 @@ def get_path(service, file_id):
         return "/" + file_name
     parent_path = ""
     for parent in parents:
-        parent_path += get_path(service, parent) + "/"
+        parent_path += get_GDrivePath(service, parent) + "/"
     return parent_path + file_name
 
 
@@ -107,7 +148,7 @@ def write_fileListfromGoogleDrive(drive_service, filename):
             writer.write(json.dumps(files))
 
 
-def getFileRevisionsAndPath(drive_service, db_filename):
+def getFileRevisionsAndGPath(drive_service, db_filename):
     global limiter
     data = {}
     str_list = open(db_filename, 'r').read()
@@ -146,7 +187,7 @@ def getFileRevisionsAndPath(drive_service, db_filename):
             revision_nombre = revision[1]
             revision_fecha = revision[2][:10]
             revision_id = revision[3]
-            # file_path = get_path(drive_service, file_id)
+            # file_path = get_GDrivepath(drive_service, file_id)
             file_data = {
                 'id': file_id,
                 'revision_id': revision_id,
@@ -180,8 +221,7 @@ def create_folder(directory_path):
         print(f"\nFolder '{directory_path}' created")
 
 
-def download_file(drive_service, file, download):
-    global DOWNLOADED_PATH
+def download_file(drive_service, DOWNLOADED_PATH, file, download):
     done = False
     filename = file['filename']
     original_filename = file['original_filename']
@@ -237,7 +277,7 @@ def save_DB(db_filename, db):
         writer.write(json.dumps(db))
 
 
-def googleDrive(drive_service, db_filename):
+def googleDriveDownloadRev(drive_service, DOWNLOADED_PATH, db_filename):
     global limiter
     dic_files = json.loads(open(db_filename, 'r').read())
     total_files = 5 if limiter else len(dic_files)
@@ -249,13 +289,18 @@ def googleDrive(drive_service, db_filename):
             # original_filename = file['original_filename']
             if file['path'] == '':
                 changes = True
-                file['path'] = get_path(drive_service, file_id)
+                file['path'] = get_GDrivePath(drive_service, file_id)
             if 'download' not in file:
                 changes = True
                 file['download'] = False
 
             if not file['download']:
-                downloaded = download_file(drive_service, file, True)
+                downloaded = download_file(
+                    drive_service,
+                    DOWNLOADED_PATH,
+                    file,
+                    True
+                )
                 if downloaded:
                     changes = True
                     file['download'] = True
@@ -273,75 +318,6 @@ def googleDrive(drive_service, db_filename):
                     break
     except KeyboardInterrupt:
         save_DB(db_filename, dic_files)
-
-
-def oldgoogleDrive():
-    pass
-    # Intento 1
-    # MARKETING_ROOTID = '1xxeM5EI7m6KkS9GICO6zy-fAml0XhWr3'
-    # root_folder = drive_service.files().get(
-    #   fileId=MARKETING_ROOTID
-    # ).execute()
-
-    # folders = drive_service.files().list(
-    #   q="'{}' in parents and name contains '.foty'".format(
-    #       root_folder['id']
-    #   ),
-    #   fields="nextPageToken,
-    #   files(id, name, mimeType, createdTime)"
-    # ).execute()
-
-    # if not folders:
-    #     print("No folders found in your Drive.")
-    # else:
-    #     print("Your Drive folders:")
-    #     for folder in folders['files']:
-    #         print(folder)
-
-    # Intento 2
-    # fecha_evento = datetime.strptime(
-    #     '2023-04-25',
-    #     '%Y-%m-%d'
-    # ).date()
-
-    # for n, file in enumerate(files):
-    #     revisions = drive_service.revisions().list(
-    #         fileId=file['id']
-    #     ).execute()
-    #     revisiones_correctas = []
-    #     for m, revision in enumerate(revisions['revisions']):
-    #         nombre_revision = get_file_name_from_revision(
-    #             drive_service,
-    #             file['id'],
-    #             revision['id']
-    #         )
-    #         date_revision = revision['modifiedTime']
-    #         p_date_revision = datetime.strptime(
-    #             date_revision,
-    #             '%Y-%m-%dT%H:%M:%S.%fZ'
-    #         )
-    #         if p_date_revision.date() < fecha_evento:
-    #             revisiones_correctas.append([
-    #                 revision,
-    #                 nombre_revision,
-    #                 date_revision
-    #             ])
-    #             # print(f"{m + 1} {nombre_revision} {date_revision}")
-    #     if len(revisiones_correctas) > 0:
-    #         revision_nombre = revisiones_correctas[-1][1]
-    #         revision_fecha = revisiones_correctas[-1][2][:10]
-    #         file_data = {
-    #             'id': file['id'],
-    #             'path': get_path(drive_service, file['id']),
-    #             'filename': file['name'],
-    #             'mymeType': file['mimeType'],
-    #             'original_filename': revision_nombre,
-    #             'original_date': revision_fecha,
-    #             'revision_id': revision['id']
-    #         }
-    #         print(json.dumps(file_data, indent=4))
-    #     if n == 5:
-    #         break
 
 
 def connectGoogleDrive():
@@ -369,14 +345,30 @@ def connectGoogleDrive():
 
 
 def main():
-    db_file = 'files_from_googleDrove.json'
+    global connectGDrive, RENAME_FILES, SERVER_FOLDER, DOWNLOADED_PATH
+    server_affected_extension = '.foty'
+    server_affected_files = 'files_from_server.json'
+    db_file = 'files_from_googleDrive.json'
     db_file_dic = f'p_{db_file}'
-    drive_service = connectGoogleDrive()
-    if not os.path.exists(db_file):
-        write_fileListfromGoogleDrive(drive_service, db_file)
-    if not os.path.exists(db_file_dic):
-        getFileRevisionsAndPath(drive_service, db_file)
-    googleDrive(drive_service, db_file_dic)
+    if not os.path.exists(server_affected_files):
+        write_affected_files(
+            SERVER_FOLDER,
+            server_affected_files,
+            server_affected_extension
+        )
+    if RENAME_FILES:
+        rename_affected_files(SERVER_FOLDER, server_affected_files)
+    if connectGDrive:
+        drive_service = connectGoogleDrive()
+        if not os.path.exists(db_file):
+            write_fileListfromGoogleDrive(drive_service, db_file)
+        if not os.path.exists(db_file_dic):
+            getFileRevisionsAndGPath(drive_service, db_file)
+        googleDriveDownloadRev(
+            drive_service,
+            DOWNLOADED_PATH,
+            db_file_dic
+        )
 
 
 if __name__ == '__main__':

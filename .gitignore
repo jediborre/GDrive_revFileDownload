@@ -162,8 +162,9 @@ cython_debug/
 credentials.json
 /files.tsv
 /downloaded
-/files_from_googleDrove.json
-/p_files_from_googleDrove.json
-files_from_googleDrove.json
-p_files_from_googleDrove.json
+/files_from_googleDrive.json
+/p_files_from_googleDrive.json
+files_from_googleDrive.json
+p_files_from_googleDrive.json
 token.json
+/files_from_server.json
